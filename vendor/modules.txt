@@ -1,0 +1,40 @@
+# github.com/Microsoft/go-winio v0.4.12
+github.com/Microsoft/go-winio
+# github.com/lxn/walk v0.0.0-00010101000000-000000000000 => golang.zx2c4.com/wireguard/windows v0.0.0-20190401093156-75b0494b8f11
+github.com/lxn/walk
+# github.com/lxn/win v0.0.0-00010101000000-000000000000 => golang.zx2c4.com/wireguard/windows v0.0.0-20190403001351-4403f48632e7
+github.com/lxn/win
+# golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
+golang.org/x/crypto/curve25519
+golang.org/x/crypto/blake2s
+golang.org/x/crypto/chacha20poly1305
+golang.org/x/crypto/poly1305
+golang.org/x/crypto/internal/chacha20
+golang.org/x/crypto/internal/subtle
+# golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3
+golang.org/x/net/ipv4
+golang.org/x/net/ipv6
+golang.org/x/net/bpf
+golang.org/x/net/internal/iana
+golang.org/x/net/internal/socket
+# golang.org/x/sys v0.0.0-20190405154228-4b34438f7a67
+golang.org/x/sys/windows
+golang.org/x/sys/windows/svc
+golang.org/x/sys/windows/svc/mgr
+golang.org/x/sys/unix
+golang.org/x/sys/cpu
+golang.org/x/sys/windows/registry
+# golang.zx2c4.com/winipcfg v0.0.0-20190310060751-c1b9479d2653
+golang.zx2c4.com/winipcfg
+# golang.zx2c4.com/wireguard v0.0.0-20190404072018-767c86f8cb93 => git.zx2c4.com/wireguard-go v0.0.0-20190409084540-d50e390904ea
+golang.zx2c4.com/wireguard/device
+golang.zx2c4.com/wireguard/ipc
+golang.zx2c4.com/wireguard/tun
+golang.zx2c4.com/wireguard/ratelimiter
+golang.zx2c4.com/wireguard/replay
+golang.zx2c4.com/wireguard/rwcancel
+golang.zx2c4.com/wireguard/tai64n
+golang.zx2c4.com/wireguard/tun/wintun
+golang.zx2c4.com/wireguard/tun/wintun/guid
+golang.zx2c4.com/wireguard/tun/wintun/netshell
+golang.zx2c4.com/wireguard/tun/wintun/setupapi
