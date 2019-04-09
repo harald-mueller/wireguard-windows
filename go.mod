@@ -14,4 +14,5 @@ require (
 replace (
 	github.com/lxn/walk => golang.zx2c4.com/wireguard/windows v0.0.0-20190401093156-75b0494b8f11
 	github.com/lxn/win => golang.zx2c4.com/wireguard/windows v0.0.0-20190403001351-4403f48632e7
+	golang.zx2c4.com/wireguard => git.zx2c4.com/wireguard-go v0.0.0-20190409084540-d50e390904ea
 )
