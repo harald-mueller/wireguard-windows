@@ -13,6 +13,6 @@ require (
 )
 
 replace (
-	github.com/lxn/walk => golang.zx2c4.com/wireguard/windows
-	github.com/lxn/win => golang.zx2c4.com/wireguard/windows
+	github.com/lxn/walk => golang.zx2c4.com/wireguard/windows v0.0.0-20190527130154-a80ce0edcf28
+	github.com/lxn/win => golang.zx2c4.com/wireguard/windows v0.0.0-20190514122436-6f00d814e89c
 )
