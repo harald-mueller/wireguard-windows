@@ -19,22 +19,26 @@ The tunnel service is a userspace service running as Local System, responsible f
   - A listening pipe in `\\.\pipe\WireGuard\%s`, where `%s` is some basename of an already valid filename. Its permissions are set to `O:SYD:(A;;GA;;;SY)`, which presumably means only the "Local System" user can access it and do things, but it might be worth double checking that. This pipe gives access to private keys and allows for reconfiguration of the interface, as well as rebinding to different ports (below 1024, even).
   - It handles data from its two UDP sockets, accessible to the public Internet.
   - It handles data from Wintun, accessible to all users who can do anything with the network stack.
-  - It does not yet drop privileges.
+  - After some initial setup, it uses `AdjustTokenPrivileges` to remove all privileges.
 
 ### Manager Service
 
 The manager service is a userspace service running as Local System, responsible for starting and stopping tunnel services, and ensuring a UI program with certain handles is available to Administrators. It exposes:
 
-  - Extensive IPC using unnamed pipes, inherited by the unprivileged UI process.
-  - A writable `CreateFileMapping` handle to a binary ringlog shared by all services, inherited by the unprivileged UI process. It's unclear if this brings with it surprising hidden attack surface in the mm system.
+  - Extensive IPC using unnamed pipes, inherited by the UI process.
+  - A readable `CreateFileMapping` handle to a binary ringlog shared by all services, inherited by the UI process.
   - It listens for service changes in tunnel services according to the string prefix "WireGuardTunnel$".
   - It manages DPAPI-encrypted configuration files in Local System's local appdata directory, and makes some effort to enforce good configuration filenames.
-  - It uses `wtsEnumerateSessions` and `WTSSESSION_NOTIFICATION` to walk through each available session. It then uses `wtfQueryUserToken`, and then calls `GetTokenInformation(TokenGroups)` on it. If one of the returned group's SIDs matches `CreateWellKnownSid(WinBuiltinAdministratorsSid)`, then it spawns the unprivileged UI process as that user token, passing it three unnamed pipe handles for IPC and the log mapping handle, as descried above.
+  - It uses `WTSEnumerateSessions` and `WTSSESSION_NOTIFICATION` to walk through each available session. It then uses `WTSQueryUserToken`, and then calls `GetTokenInformation(TokenGroups)` on it. If one of the returned group's SIDs matches `IsWellKnownSid(WinBuiltinAdministratorsSid)`, and has attributes of either `SE_GROUP_ENABLED` or `SE_GROUP_USE_FOR_DENY_ONLY` and calling `GetTokenInformation(TokenElevation)` on it or its `TokenLinkedToken` indicates that either is elevated, then it spawns the UI process as that the elevated user token, passing it three unnamed pipe handles for IPC and the log mapping handle, as described above.
 
 ### UI
 
-The UI is an unprivileged process running as the ordinary user for each user who is in the Administrators group (per the above). It exposes:
+The UI is a process running for each user who is in the Administrators group (per the above), running with the elevated high integrity linked token. It exposes:
 
-  - There currently are no anti-debugging mechanisms, which means any process that can, debug, introspect, inject, send messages, or interact with the UI, may be able to take control of the above handles passed to it by the manager service. In theory that shouldn't be too horrible for the security model, but rather than risk it, we might consider importing all of the insane things VirtualBox does in this domain. Alternatively, since the anti-debugging stuff is pretty ugly and probably doesn't even work properly everywhere, we may be better off with starting the process at some heightened security level, such that only other processes at that level can introspect; however, we'll need to take special care that doing so doesn't give the UI process any special accesses it wouldn't otherwise have.
+  - Since the UI process is executed with an elevated token, it runs at high integrity and should be immune to various shatter attacks, modulo the great variety of clever bypasses in the latest Windows release.
+  - It uses `AdjustTokenPrivileges` to remove all privileges.
   - It renders highlighted config files to a msftedit.dll control, which typically is capable of all sorts of OLE and RTF nastiness that we make some attempt to avoid.
 
+### Updates
+
+A server hosts the result of `b2sum -l 256 *.msi > list && signify -S -e -s release.sec -m list && upload ./list.sec`, with the private key stored on an HSM. The MSIs in that list are only the latest ones available, and filenames fit the form `wireguard-${arch}-${version}.msi`. The updater, running as part of the manager service, downloads this list over TLS and verifies the signify Ed25519 signature of it. If it validates, then it finds the first MSI in it for its architecture that has a greater version. It then downloads this MSI from a predefined URL to a randomly generated (256-bits) file name inside `C:\Windows\Temp` with permissions of `O:SYD:PAI(A;;FA;;;SY)(A;;FR;;;BA)`, scheduled to be cleaned up at next boot via `MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT)`, and verifies the BLAKE2b-256 signature. If it validates, then it calls `WinTrustVerify(WINTRUST_ACTION_GENERIC_VERIFY_V2, WTD_REVOKE_WHOLECHAIN)` on the MSI. If it validates, then it executes the installer with `msiexec.exe /qb!- /i`, using the elevated token linked to the IPC UI session that requested the update. Because `msiexec` requires exclusive access to the file, the file handle is closed in between the completion of downloading and the commencement of `msiexec`. Hopefully the permissions of `C:\Windows\Temp` are good enough that an attacker can't replace the MSI from beneath us.

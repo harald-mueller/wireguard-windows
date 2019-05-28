@@ -44,8 +44,8 @@ type Interface struct {
 	PrivateKey Key
 	Addresses  []IPCidr
 	ListenPort uint16
-	Mtu        uint16
-	Dns        []net.IP
+	MTU        uint16
+	DNS        []net.IP
 }
 
 type Peer struct {
@@ -67,9 +67,8 @@ func (r *IPCidr) String() string {
 func (r *IPCidr) Bits() uint8 {
 	if r.IP.To4() != nil {
 		return 32
-	} else {
-		return 128
 	}
+	return 128
 }
 
 func (r *IPCidr) IPNet() net.IPNet {

@@ -6,9 +6,7 @@
 package conf
 
 import (
-	"errors"
 	"fmt"
-	"net"
 	"strings"
 )
 
@@ -30,16 +28,16 @@ func (conf *Config) ToWgQuick() string {
 		output.WriteString(fmt.Sprintf("Address = %s\n", strings.Join(addrStrings[:], ", ")))
 	}
 
-	if len(conf.Interface.Dns) > 0 {
-		addrStrings := make([]string, len(conf.Interface.Dns))
-		for i, address := range conf.Interface.Dns {
+	if len(conf.Interface.DNS) > 0 {
+		addrStrings := make([]string, len(conf.Interface.DNS))
+		for i, address := range conf.Interface.DNS {
 			addrStrings[i] = address.String()
 		}
 		output.WriteString(fmt.Sprintf("DNS = %s\n", strings.Join(addrStrings[:], ", ")))
 	}
 
-	if conf.Interface.Mtu > 0 {
-		output.WriteString(fmt.Sprintf("MTU = %d\n", conf.Interface.Mtu))
+	if conf.Interface.MTU > 0 {
+		output.WriteString(fmt.Sprintf("MTU = %d\n", conf.Interface.MTU))
 	}
 
 	for _, peer := range conf.Peers {
@@ -70,7 +68,7 @@ func (conf *Config) ToWgQuick() string {
 	return output.String()
 }
 
-func (conf *Config) ToUAPI() (string, error) {
+func (conf *Config) ToUAPI() (uapi string, dnsErr error) {
 	var output strings.Builder
 	output.WriteString(fmt.Sprintf("private_key=%s\n", conf.Interface.PrivateKey.HexString()))
 
@@ -86,29 +84,16 @@ func (conf *Config) ToUAPI() (string, error) {
 		output.WriteString(fmt.Sprintf("public_key=%s\n", peer.PublicKey.HexString()))
 
 		if !peer.PresharedKey.IsZero() {
-			output.WriteString(fmt.Sprintf("preshared_key = %s\n", peer.PresharedKey.String()))
+			output.WriteString(fmt.Sprintf("preshared_key=%s\n", peer.PresharedKey.HexString()))
 		}
 
 		if !peer.Endpoint.IsEmpty() {
-			ips, err := net.LookupIP(peer.Endpoint.Host)
-			if err != nil {
-				return "", err
+			var resolvedIP string
+			resolvedIP, dnsErr = resolveHostname(peer.Endpoint.Host)
+			if dnsErr != nil {
+				return
 			}
-			var ip net.IP
-			for _, iterip := range ips {
-				iterip = iterip.To4()
-				if iterip != nil {
-					ip = iterip
-					break
-				}
-				if ip == nil {
-					ip = iterip
-				}
-			}
-			if ip == nil {
-				return "", errors.New("Unable to resolve IP address of endpoint")
-			}
-			resolvedEndpoint := Endpoint{ip.String(), peer.Endpoint.Port}
+			resolvedEndpoint := Endpoint{resolvedIP, peer.Endpoint.Port}
 			output.WriteString(fmt.Sprintf("endpoint=%s\n", resolvedEndpoint.String()))
 		}
 

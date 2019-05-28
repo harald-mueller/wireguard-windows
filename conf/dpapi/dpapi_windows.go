@@ -7,9 +7,10 @@ package dpapi
 
 import (
 	"errors"
-	"golang.org/x/sys/windows"
 	"runtime"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -36,7 +37,7 @@ func bytesToBlob(bytes []byte) *dpBlob {
 	return blob
 }
 
-//sys   cryptProtectData(dataIn *dpBlob, name *uint16, optionalEntropy *dpBlob, reserved uintptr, promptStruct uintptr, flags uint32, dataOut *dpBlob) (err error) = crypt32.CryptProtectData
+//sys	cryptProtectData(dataIn *dpBlob, name *uint16, optionalEntropy *dpBlob, reserved uintptr, promptStruct uintptr, flags uint32, dataOut *dpBlob) (err error) = crypt32.CryptProtectData
 
 func Encrypt(data []byte, name string) ([]byte, error) {
 	out := dpBlob{}
@@ -57,7 +58,7 @@ func Encrypt(data []byte, name string) ([]byte, error) {
 	return ret, nil
 }
 
-//sys   cryptUnprotectData(dataIn *dpBlob, name **uint16, optionalEntropy *dpBlob, reserved uintptr, promptStruct uintptr, flags uint32, dataOut *dpBlob) (err error) = crypt32.CryptUnprotectData
+//sys	cryptUnprotectData(dataIn *dpBlob, name **uint16, optionalEntropy *dpBlob, reserved uintptr, promptStruct uintptr, flags uint32, dataOut *dpBlob) (err error) = crypt32.CryptUnprotectData
 
 func Decrypt(data []byte, name string) ([]byte, error) {
 	out := dpBlob{}

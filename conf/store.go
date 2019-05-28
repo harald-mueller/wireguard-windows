@@ -7,11 +7,12 @@ package conf
 
 import (
 	"errors"
-	"golang.zx2c4.com/wireguard/windows/conf/dpapi"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.zx2c4.com/wireguard/windows/conf/dpapi"
 )
 
 const configFileSuffix = ".conf.dpapi"
@@ -83,7 +84,7 @@ func MigrateUnencryptedConfigs() (int, []error) {
 			e++
 			continue
 		}
-		_, err = FromWgQuick(string(bytes), "input")
+		_, err = FromWgQuickWithUnknownEncoding(string(bytes), "input")
 		if err != nil {
 			errs[e] = err
 			e++
@@ -142,7 +143,7 @@ func LoadFromPath(path string) (*Config, error) {
 			return nil, err
 		}
 	}
-	return FromWgQuick(string(bytes), name)
+	return FromWgQuickWithUnknownEncoding(string(bytes), name)
 }
 
 func NameFromPath(path string) (string, error) {

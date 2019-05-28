@@ -17,6 +17,14 @@
 #define WM_REFLECT (WM_USER + 0x1C00)
 
 #define SE_PRIVATE_KEY (WM_USER + 0x3100)
+#define SE_TRAFFIC_BLOCK (WM_USER + 0x3101)
+#define SE_SET_PARENT_DPI (WM_USER + 0x3102)
+
+enum block_state {
+	InevaluableBlockingUntunneledTraffic,
+	BlockingUntunneledTraffic,
+	NotBlockingUntunneledTraffic
+};
 
 extern bool register_syntax_edit(void);
 

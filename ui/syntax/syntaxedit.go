@@ -15,49 +15,22 @@ import (
 	"github.com/lxn/win"
 )
 
+// #cgo LDFLAGS: -lgdi32
 // #include "syntaxedit.h"
 import "C"
 
-type PrivateKeyHandler func(privateKey string)
-type PrivateKeyEvent struct {
-	handlers []PrivateKeyHandler
-}
-
-func (e *PrivateKeyEvent) Attach(handler PrivateKeyHandler) int {
-	for i, h := range e.handlers {
-		if h == nil {
-			e.handlers[i] = handler
-			return i
-		}
-	}
-
-	e.handlers = append(e.handlers, handler)
-	return len(e.handlers) - 1
-}
-func (e *PrivateKeyEvent) Detach(handle int) {
-	e.handlers[handle] = nil
-}
-
-type PrivateKeyPublisher struct {
-	event PrivateKeyEvent
-}
-
-func (p *PrivateKeyPublisher) Event() *PrivateKeyEvent {
-	return &p.event
-}
-func (p *PrivateKeyPublisher) Publish(privateKey string) {
-	for _, handler := range p.event.handlers {
-		if handler != nil {
-			handler(privateKey)
-		}
-	}
-}
-
 type SyntaxEdit struct {
 	walk.WidgetBase
-	textChangedPublisher walk.EventPublisher
-	privateKeyPublisher  PrivateKeyPublisher
+	textChangedPublisher            walk.EventPublisher
+	privateKeyPublisher             walk.StringEventPublisher
+	blockUntunneledTrafficPublisher walk.IntEventPublisher
 }
+
+const (
+	InevaluableBlockingUntunneledTraffic = C.InevaluableBlockingUntunneledTraffic
+	BlockingUntunneledTraffic            = C.BlockingUntunneledTraffic
+	NotBlockingUntunneledTraffic         = C.NotBlockingUntunneledTraffic
+)
 
 func (se *SyntaxEdit) LayoutFlags() walk.LayoutFlags {
 	return walk.GrowableHorz | walk.GrowableVert | walk.GreedyHorz | walk.GreedyVert
@@ -94,8 +67,12 @@ func (se *SyntaxEdit) TextChanged() *walk.Event {
 	return se.textChangedPublisher.Event()
 }
 
-func (se *SyntaxEdit) PrivateKeyChanged() *PrivateKeyEvent {
+func (se *SyntaxEdit) PrivateKeyChanged() *walk.StringEvent {
 	return se.privateKeyPublisher.Event()
+}
+
+func (se *SyntaxEdit) BlockUntunneledTrafficStateChanged() *walk.IntEvent {
+	return se.blockUntunneledTrafficPublisher.Event()
 }
 
 func (se *SyntaxEdit) WndProc(hwnd win.HWND, msg uint32, wParam, lParam uintptr) uintptr {
@@ -113,6 +90,8 @@ func (se *SyntaxEdit) WndProc(hwnd win.HWND, msg uint32, wParam, lParam uintptr)
 		} else {
 			se.privateKeyPublisher.Publish(C.GoString((*C.char)(unsafe.Pointer(lParam))))
 		}
+	case C.SE_TRAFFIC_BLOCK:
+		se.blockUntunneledTrafficPublisher.Publish(int(lParam))
 	}
 	return se.WidgetBase.WndProc(hwnd, msg, wParam, lParam)
 }
@@ -130,6 +109,7 @@ func NewSyntaxEdit(parent walk.Container) (*SyntaxEdit, error) {
 	if err != nil {
 		return nil, err
 	}
+	se.SendMessage(C.SE_SET_PARENT_DPI, uintptr(parent.DPI()), 0)
 
 	se.GraphicsEffects().Add(walk.InteractionEffect)
 	se.GraphicsEffects().Add(walk.FocusEffect)
@@ -140,11 +120,14 @@ func NewSyntaxEdit(parent walk.Container) (*SyntaxEdit, error) {
 		func(v interface{}) error {
 			if s, ok := v.(string); ok {
 				return se.SetText(s)
-			} else {
-				return se.SetText("")
 			}
+			return se.SetText("")
 		},
 		se.textChangedPublisher.Event()))
 
 	return se, nil
+}
+
+func (se *SyntaxEdit) ApplyDPI(dpi int) {
+	se.SendMessage(C.SE_SET_PARENT_DPI, uintptr(dpi), 0)
 }

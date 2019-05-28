@@ -21,6 +21,9 @@ const GUID CDECL IID_ITextDocument = { 0x8CC497C0, 0xA1DF, 0x11CE, { 0x80, 0x98,
 struct syntaxedit_data {
 	IRichEditOle *irich;
 	ITextDocument *idoc;
+	enum block_state last_block_state;
+	LONG yheight;
+	bool highlight_guard;
 };
 
 static WNDPROC parent_proc;
@@ -53,8 +56,70 @@ static const struct span_style stylemap[] = {
 	[HighlightError] = { .color = RGB(0xC4, 0x1A, 0x16), .effects = CFE_UNDERLINE }
 };
 
+static void evaluate_untunneled_blocking(struct syntaxedit_data *this, HWND hWnd, const char *msg, struct highlight_span *spans)
+{
+	enum block_state state = InevaluableBlockingUntunneledTraffic;
+	bool on_allowedips = false;
+	bool seen_peer = false;
+	bool seen_v6_00 = false, seen_v4_00 = false;
+	bool seen_v6_01 = false, seen_v6_80001 = false, seen_v4_01 = false, seen_v4_1281 = false;
+
+	for (struct highlight_span *span = spans; span->type != HighlightEnd; ++span) {
+		switch (span->type) {
+		case HighlightError:
+			goto done;
+		case HighlightSection:
+			if (span->len != 6 || strncasecmp(&msg[span->start], "[peer]", 6))
+				break;
+			if (!seen_peer)
+				seen_peer = true;
+			else
+				goto done;
+			break;
+		case HighlightField:
+			on_allowedips = span->len == 10 && !strncasecmp(&msg[span->start], "allowedips", 10);
+			break;
+		case HighlightIP:
+			if (!on_allowedips || !seen_peer)
+				break;
+			if ((span + 1)->type != HighlightDelimiter || (span + 2)->type != HighlightCidr)
+				break;
+			if ((span + 2)->len != 1)
+				break;
+			if (msg[(span + 2)->start] == '0') {
+				if (span->len == 7 && !strncmp(&msg[span->start], "0.0.0.0", 7))
+					seen_v4_00 = true;
+				else if (span->len == 2 && !strncmp(&msg[span->start], "::", 2))
+					seen_v6_00 = true;
+			} else if (msg[(span + 2)->start] == '1') {
+				if (span->len == 7 && !strncmp(&msg[span->start], "0.0.0.0", 7))
+					seen_v4_01 = true;
+				else if (span->len == 9 && !strncmp(&msg[span->start], "128.0.0.0", 9))
+					seen_v4_1281 = true;
+				else if (span->len == 2 && !strncmp(&msg[span->start], "::", 2))
+					seen_v6_01 = true;
+				else if (span->len == 6 && !strncmp(&msg[span->start], "8000::", 6))
+					seen_v6_80001 = true;
+			}
+			break;
+		}
+	}
+
+	if (seen_v4_00 || seen_v6_00)
+		state = BlockingUntunneledTraffic;
+	else if ((seen_v4_01 && seen_v4_1281) || (seen_v6_01 && seen_v6_80001))
+		state = NotBlockingUntunneledTraffic;
+
+done:
+	if (state != this->last_block_state) {
+		SendMessage(hWnd, SE_TRAFFIC_BLOCK, 0, state);
+		this->last_block_state = state;
+	}
+}
+
 static void highlight_text(HWND hWnd)
 {
+	struct syntaxedit_data *this = (struct syntaxedit_data *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 	GETTEXTLENGTHEX gettextlengthex = {
 		.flags = GTL_NUMBYTES,
 		.codepage = CP_ACP /* Probably CP_UTF8 would be better, but (wine at least) returns utf32 sizes. */
@@ -67,16 +132,19 @@ static void highlight_text(HWND hWnd)
 		.cbSize = sizeof(CHARFORMAT2),
 		.dwMask = CFM_COLOR | CFM_CHARSET | CFM_SIZE | CFM_BOLD | CFM_ITALIC | CFM_UNDERLINE,
 		.dwEffects = CFE_AUTOCOLOR,
-		.yHeight = 20 * 10,
+		.yHeight = this->yheight ?: 20 * 10,
 		.bCharSet = ANSI_CHARSET
 	};
-	struct syntaxedit_data *this = (struct syntaxedit_data *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 	LRESULT msg_size;
-	char *msg;
-	struct highlight_span *spans;
+	char *msg = NULL;
+	struct highlight_span *spans = NULL;
 	CHARRANGE orig_selection;
 	POINT original_scroll;
 	bool found_private_key = false;
+
+	if (this->highlight_guard)
+		return;
+	this->highlight_guard = true;
 
 	msg_size = SendMessage(hWnd, EM_GETTEXTLENGTHEX, (WPARAM)&gettextlengthex, 0);
 	if (msg_size == E_INVALIDARG)
@@ -85,11 +153,9 @@ static void highlight_text(HWND hWnd)
 
 	msg = malloc(msg_size + 1);
 	if (!msg)
-		return;
-	if (SendMessage(hWnd, EM_GETTEXTEX, (WPARAM)&gettextex, (LPARAM)msg) <= 0) {
-		free(msg);
-		return;
-	}
+		goto out;
+	if (SendMessage(hWnd, EM_GETTEXTEX, (WPARAM)&gettextex, (LPARAM)msg) <= 0)
+		goto out;
 
 	/* By default we get CR not CRLF, so just convert to LF. */
 	for (size_t i = 0; i < msg_size; ++i) {
@@ -98,10 +164,10 @@ static void highlight_text(HWND hWnd)
 	}
 
 	spans = highlight_config(msg);
-	if (!spans) {
-		free(msg);
-		return;
-	}
+	if (!spans)
+		goto out;
+
+	evaluate_untunneled_blocking(this, hWnd, msg, spans);
 
 	this->idoc->lpVtbl->Undo(this->idoc, tomSuspend, NULL);
 	SendMessage(hWnd, WM_SETREDRAW, FALSE, 0);
@@ -128,10 +194,13 @@ static void highlight_text(HWND hWnd)
 	SendMessage(hWnd, WM_SETREDRAW, TRUE, 0);
 	RedrawWindow(hWnd, NULL, NULL, RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_ALLCHILDREN);
 	this->idoc->lpVtbl->Undo(this->idoc, tomResume, NULL);
-	free(spans);
-	free(msg);
 	if (!found_private_key)
 		SendMessage(hWnd, SE_PRIVATE_KEY, 0, 0);
+
+out:
+	free(spans);
+	free(msg);
+	this->highlight_guard = false;
 }
 
 static void context_menu(HWND hWnd, INT x, INT y)
@@ -227,7 +296,7 @@ static LRESULT CALLBACK child_proc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lP
 	switch (Msg) {
 	case WM_CREATE: {
 		struct syntaxedit_data *this = calloc(1, sizeof(*this));
-		SetWindowLong(hWnd, GWL_EXSTYLE,  GetWindowLong(hWnd, GWL_EXSTYLE) & ~WS_EX_CLIENTEDGE);
+		SetWindowLong(hWnd, GWL_EXSTYLE, GetWindowLong(hWnd, GWL_EXSTYLE) & ~WS_EX_CLIENTEDGE);
 		assert(this);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)this);
 		SendMessage(hWnd, EM_GETOLEINTERFACE, 0, (LPARAM)&this->irich);
@@ -249,6 +318,16 @@ static LRESULT CALLBACK child_proc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lP
 		highlight_text(hWnd);
 		SendMessage(hWnd, EM_EMPTYUNDOBUFFER, 0, 0);
 		return ret;
+	}
+	case SE_SET_PARENT_DPI: {
+		struct syntaxedit_data *this = (struct syntaxedit_data *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+		HDC hdc = GetDC(hWnd);
+		if (this->yheight)
+			SendMessage(hWnd, EM_SETZOOM, GetDeviceCaps(hdc, LOGPIXELSY), wParam);
+		this->yheight = MulDiv(20 * 10, wParam, GetDeviceCaps(hdc, LOGPIXELSY));
+		ReleaseDC(hWnd, hdc);
+		highlight_text(hWnd);
+		return 0;
 	}
 	case WM_REFLECT + WM_COMMAND:
 	case WM_COMMAND:

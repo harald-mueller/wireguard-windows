@@ -7,22 +7,32 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"runtime"
+
 	"github.com/lxn/walk"
 	"github.com/lxn/win"
 	"golang.org/x/sys/windows"
-	"os"
-	"runtime"
 )
 
-const wireguardUIClass = "WireGuard UI - MainWindow"
+func raise(hwnd win.HWND) {
+	if win.IsIconic(hwnd) {
+		win.ShowWindow(hwnd, win.SW_RESTORE)
+	}
+
+	win.SetActiveWindow(hwnd)
+
+	win.SetWindowPos(hwnd, win.HWND_TOPMOST, 0, 0, 0, 0, win.SWP_NOMOVE|win.SWP_NOSIZE|win.SWP_SHOWWINDOW)
+	win.SetForegroundWindow(hwnd)
+	win.SetWindowPos(hwnd, win.HWND_NOTOPMOST, 0, 0, 0, 0, win.SWP_NOMOVE|win.SWP_NOSIZE|win.SWP_SHOWWINDOW)
+}
 
 func RaiseUI() bool {
-	hwnd := win.FindWindow(windows.StringToUTF16Ptr(wireguardUIClass), windows.StringToUTF16Ptr("WireGuard"))
+	hwnd := win.FindWindow(windows.StringToUTF16Ptr(manageWindowWindowClass), nil)
 	if hwnd == 0 {
 		return false
 	}
-	win.ShowWindow(hwnd, win.SW_NORMAL)
-	win.BringWindowToTop(hwnd)
+	win.SendMessage(hwnd, raiseMsg, 0, 0)
 	win.SetForegroundWindow(hwnd)
 	return true
 }
@@ -30,15 +40,15 @@ func RaiseUI() bool {
 func WaitForRaiseUIThenQuit() {
 	var handle win.HWINEVENTHOOK
 	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	handle, err := win.SetWinEventHook(win.EVENT_OBJECT_CREATE, win.EVENT_OBJECT_CREATE, 0, func(hWinEventHook win.HWINEVENTHOOK, event uint32, hwnd win.HWND, idObject int32, idChild int32, idEventThread uint32, dwmsEventTime uint32) uintptr {
-		class := make([]uint16, len(wireguardUIClass)+2) /* Plus 2, one for the null terminator, and one to see if this is only a prefix */
+		class := make([]uint16, len(manageWindowWindowClass)+2) /* Plus 2, one for the null terminator, and one to see if this is only a prefix */
 		n, err := win.GetClassName(hwnd, &class[0], len(class))
-		if err != nil || n != len(wireguardUIClass) || windows.UTF16ToString(class) != wireguardUIClass {
+		if err != nil || n != len(manageWindowWindowClass) || windows.UTF16ToString(class) != manageWindowWindowClass {
 			return 0
 		}
 		win.UnhookWinEvent(handle)
-		win.ShowWindow(hwnd, win.SW_NORMAL)
-		win.BringWindowToTop(hwnd)
+		win.SendMessage(hwnd, raiseMsg, 0, 0)
 		win.SetForegroundWindow(hwnd)
 		os.Exit(0)
 		return 0

@@ -6,9 +6,10 @@
 package ringlogger
 
 import (
-	"golang.zx2c4.com/wireguard/windows/conf"
 	"log"
-	"path"
+	"path/filepath"
+
+	"golang.zx2c4.com/wireguard/windows/conf"
 )
 
 var Global *Ringlogger
@@ -21,7 +22,7 @@ func InitGlobalLogger(tag string) error {
 	if err != nil {
 		return err
 	}
-	Global, err = NewRinglogger(path.Join(root, "log.bin"), tag)
+	Global, err = NewRinglogger(filepath.Join(root, "log.bin"), tag)
 	if err != nil {
 		return err
 	}

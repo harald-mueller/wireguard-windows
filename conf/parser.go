@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/text/encoding/unicode"
 )
 
 type ParseError struct {
@@ -80,7 +82,11 @@ func parseEndpoint(s string) (*Endpoint, error) {
 	if host[0] == '[' || host[len(host)-1] == ']' || hostColon > 0 {
 		err := &ParseError{"Brackets must contain an IPv6 address", host}
 		if len(host) > 3 && host[0] == '[' && host[len(host)-1] == ']' && hostColon > 0 {
-			maybeV6 := net.ParseIP(host[1 : len(host)-1])
+			end := len(host) - 1
+			if i := strings.LastIndexByte(host, '%'); i > 1 {
+				end = i
+			}
+			maybeV6 := net.ParseIP(host[1:end])
 			if maybeV6 == nil || len(maybeV6) != net.IPv6len {
 				return nil, err
 			}
@@ -249,7 +255,7 @@ func FromWgQuick(s string, name string) (*Config, error) {
 				if err != nil {
 					return nil, err
 				}
-				conf.Interface.Mtu = m
+				conf.Interface.MTU = m
 			case "address":
 				addresses, err := splitList(val)
 				if err != nil {
@@ -272,7 +278,7 @@ func FromWgQuick(s string, name string) (*Config, error) {
 					if a == nil {
 						return nil, &ParseError{"Invalid IP address", address}
 					}
-					conf.Interface.Dns = append(conf.Interface.Dns, a)
+					conf.Interface.DNS = append(conf.Interface.DNS, a)
 				}
 			default:
 				return nil, &ParseError{"Invalid key for [Interface] section", key}
@@ -334,6 +340,23 @@ func FromWgQuick(s string, name string) (*Config, error) {
 	return &conf, nil
 }
 
+func FromWgQuickWithUnknownEncoding(s string, name string) (*Config, error) {
+	c, firstErr := FromWgQuick(s, name)
+	if firstErr == nil {
+		return c, nil
+	}
+	for _, encoding := range unicode.All {
+		decoded, err := encoding.NewDecoder().String(s)
+		if err == nil {
+			c, err := FromWgQuick(decoded, name)
+			if err == nil {
+				return c, nil
+			}
+		}
+	}
+	return nil, firstErr
+}
+
 func FromUAPI(s string, existingConfig *Config) (*Config, error) {
 	lines := strings.Split(s, "\n")
 	parserState := inInterfaceSection
@@ -341,8 +364,8 @@ func FromUAPI(s string, existingConfig *Config) (*Config, error) {
 		Name: existingConfig.Name,
 		Interface: Interface{
 			Addresses: existingConfig.Interface.Addresses,
-			Dns:       existingConfig.Interface.Dns,
-			Mtu:       existingConfig.Interface.Mtu,
+			DNS:       existingConfig.Interface.DNS,
+			MTU:       existingConfig.Interface.MTU,
 		},
 	}
 	var peer *Peer
