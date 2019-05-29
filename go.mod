@@ -1,7 +1,6 @@
 module golang.zx2c4.com/wireguard/windows
 
 require (
-
 	github.com/lxn/walk v0.0.0-20190527130154-a80ce0edcf28
 	github.com/lxn/win v0.0.0-20190514122436-6f00d814e89c
 
@@ -10,6 +9,7 @@ require (
 	golang.org/x/sys v0.0.0-20190528012530-adf421d2caf4
 	golang.org/x/text v0.3.0
 	golang.zx2c4.com/wireguard v0.0.20190518-0.20190523131602-8fdcf5ee30d9
+	gopkg.in/Knetic/govaluate.v3 v3.0.0 // indirect
 )
 
 replace (
